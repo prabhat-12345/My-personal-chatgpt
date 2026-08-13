@@ -1,7 +1,7 @@
 import streamlit as st
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langchain_community.tools import DuckDuckGoSearchRun # इंटरनेट सर्च के लिए
+from duckduckgo_search import DDGS # यह नया और बिल्कुल सही तरीका है
 
 st.set_page_config(page_title="Mera ChatGPT Live", page_icon="🤖")
 st.title("🤖 Mera ChatGPT (With Live Internet)")
@@ -16,9 +16,8 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 try:
-    # सर्च करने और सटीक रहने के लिए temperature को 0 पर सेट करना बेस्ट है
-    llm = ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=api_key, temperature=0.0)
-    search_tool = DuckDuckGoSearchRun() # सर्च टूल चालू किया
+    # Llama 3.3 मॉडल एकदम सही से काम करेगा
+    llm = ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=api_key, temperature=0.2)
 except Exception as e:
     st.error(f"Model initiate nahi hua: {e}")
     st.stop()
@@ -41,35 +40,39 @@ if user_input:
     with st.chat_message("assistant"):
         with st.spinner("Internet par check kiya ja raha hai aur AI soch raha hai..."):
             try:
-                # 1. सबसे पहले इंटरनेट से इस सवाल का लाइव रिजल्ट निकालें
-                search_result = search_tool.run(user_input)
+                # लाइव इंटरनेट सर्च करने का सबसे लेटेस्ट तरीका
+                with DDGS() as ddgs:
+                    search_results = [r for r in ddgs.text(user_input, max_results=3)]
                 
-                # 2. मॉडल के लिए एक सख्त गाइडलाइन (System Prompt) बनाएं जिसमें लाइव डेटा हो
+                # सर्च रिजल्ट्स को टेक्स्ट में बदलना
+                search_text = ""
+                for res in search_results:
+                    search_text += f"Title: {res['title']}\nSnippet: {res['body']}\n\n"
+                
+                # मॉडल के लिए गाइडलाइन प्रॉम्ट
                 system_prompt = SystemMessage(content=(
-                    f"You are a highly accurate AI assistant with live internet access. "
-                    f"The user is asking a question. Here is the latest live internet search result for this query:\n"
-                    f"--- START SEARCH RESULTS ---\n{search_result}\n--- END SEARCH RESULTS ---\n"
-                    f"Use this search data to provide the most up-to-date and factually correct answer. "
-                    f"If the user asks about Mersenne Prime, ensure you mention Luke Durant's 2024 discovery based on the data."
+                    f"You are an up-to-date and highly accurate AI assistant with live internet access. "
+                    f"The user is asking a question. Here is the latest live internet search data for this query:\n"
+                    f"--- START SEARCH DATA ---\n{search_text}\n--- END SEARCH DATA ---\n"
+                    f"Use this live information to provide the most correct and latest answer. Always prioritize these live results for recent events or facts."
                 ))
                 
-                # 3. हिस्ट्री की लिस्ट तैयार करें
+                # चैट हिस्ट्री और सिस्टम प्रॉम्ट को कंबाइन करना
                 messages_to_send = [system_prompt]
                 for msg in st.session_state.chat_history:
                     messages_to_send.append(msg)
                 
-                # नया सवाल जोड़ें
                 new_human_msg = HumanMessage(content=user_input)
                 messages_to_send.append(new_human_msg)
                 
-                # 4. Groq API को लाइव डेटा के साथ भेजें
+                # Groq को रिक्वेस्ट भेजना
                 response = llm.invoke(messages_to_send)
                 st.markdown(response.content)
                 
-                # हिस्ट्री सेव करें
+                # चैट收藏 हिस्ट्री सेव करना
                 st.session_state.chat_history.append(new_human_msg)
                 st.session_state.chat_history.append(AIMessage(content=response.content))
                 
             except Exception as e:
                 st.error(f"Error: {e}")
-              
+                
